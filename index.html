@@ -56,25 +56,34 @@ function getJSON(url,ms){
     }).catch(function(e){if(!done){done=true;clearTimeout(t);reject(e);}});
   });
 }
+function strip(h){var d=document.createElement('div');d.innerHTML=h;return (d.textContent||'').trim();}
 async function enEntry(w){
   try{
-    var data=await getJSON('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(w),7000);
+    var data=await getJSON('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(w),9000);
     var e0=data[0],ph=e0.phonetic||'';
     if(!ph){for(var i=0;i<(e0.phonetics||[]).length;i++){if(e0.phonetics[i].text){ph=e0.phonetics[i].text;break;}}}
     var m=e0.meanings&&e0.meanings[0];
     return {word:e0.word,ph:ph.replace(/^\/|\/$/g,''),pos:m?(POS[m.partOfSpeech]||m.partOfSpeech):'',def:m&&m.definitions[0]?m.definitions[0].definition:''};
-  }catch(e){return null;}
+  }catch(e){}
+  try{
+    var j=await getJSON('https://en.wiktionary.org/api/rest_v1/page/definition/'+encodeURIComponent(w),9000);
+    var en=j.en&&j.en[0];
+    if(en){var k=en.partOfSpeech.toLowerCase();return {word:w,ph:'',pos:POS[k]||k,def:strip(en.definitions[0].definition)};}
+  }catch(e){}
+  return null;
 }
 async function toAr(text){
   var j=await getJSON('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=en|ar',8000);
   var main=j.responseData&&j.responseData.translatedText;
   if(!main||/MYMEMORY WARNING|INVALID/i.test(main))throw new Error('translate');
-  var alts=[main];
+  var isAr=function(t){return /[\u0600-\u06FF]/.test(t)&&!/[A-Za-z]/.test(t);};
+  var alts=isAr(main)?[main]:[];
   (j.matches||[]).forEach(function(m){
     var t=(m.translation||'').trim();
-    if(t&&alts.indexOf(t)<0&&alts.length<3&&t.length<40)alts.push(t);
+    if(t&&isAr(t)&&alts.indexOf(t)<0&&alts.length<3&&t.length<40)alts.push(t);
   });
-  return {main:main,alts:alts};
+  if(!alts.length)alts=[main];
+  return {main:alts[0],alts:alts};
 }
 document.getElementById('f').addEventListener('submit',async function(e){
   e.preventDefault();
