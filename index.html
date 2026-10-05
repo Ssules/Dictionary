@@ -19,18 +19,20 @@ h1{font-weight:400;font-size:clamp(40px,12vw,72px);margin:0;line-height:1.1;word
 .ph{font-size:20px;margin:6px 0 14px}
 .ph i{font-style:italic}
 hr{border:0;border-top:1px solid #777;margin:0 0 14px}
-.def{font-size:clamp(20px,5.5vw,30px);line-height:1.35}
-.def+.def{margin-top:8px;color:#bbb;font-size:clamp(17px,4.5vw,24px)}
+.ar{direction:rtl;text-align:right;font-family:"Noto Naskh Arabic","Traditional Arabic",Tahoma,serif}
+.arw{font-size:clamp(32px,9vw,52px);line-height:1.4}
+.def{font-size:clamp(20px,5.5vw,30px);line-height:1.5;margin-top:10px;color:#ccc}
 .msg{color:#777;font-size:18px}
 </style>
 </head>
 <body>
-<form id="f"><input id="q" placeholder="Type a word" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"><button>Go</button></form>
+<form id="f"><input id="q" placeholder="Type an English word" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"><button type="submit">Go</button></form>
 <main><div class="card" id="out"><div class="msg">Search a word.</div></div></main>
 <script>
 var out=document.getElementById('out'),q=document.getElementById('q');
 var POS={noun:'n.',verb:'v.',adjective:'adj.',adverb:'adv.',pronoun:'pron.',preposition:'prep.',conjunction:'conj.',interjection:'exclam.',article:'art.',determiner:'det.'};
 function esc(t){var d=document.createElement('div');d.textContent=t==null?'':t;return d.innerHTML;}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function syl(w){
   w=w.toLowerCase();
   if(!/^[a-z]+$/.test(w))return w;
@@ -40,25 +42,55 @@ function syl(w){
   parts[parts.length-1]+=tail;
   return parts.join('·');
 }
-function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+function getJSON(url,ms){
+  return new Promise(function(resolve,reject){
+    var done=false;
+    var t=setTimeout(function(){if(!done){done=true;reject(new Error('timeout'));}},ms);
+    fetch(url).then(function(r){
+      if(done)return;
+      if(r.status===404){done=true;clearTimeout(t);reject(new Error('notfound'));return;}
+      if(!r.ok){done=true;clearTimeout(t);reject(new Error('http '+r.status));return;}
+      return r.json().then(function(j){if(!done){done=true;clearTimeout(t);resolve(j);}});
+    }).catch(function(e){if(!done){done=true;clearTimeout(t);reject(e);}});
+  });
+}
+async function enEntry(w){
+  try{
+    var data=await getJSON('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(w),7000);
+    var e0=data[0],ph=e0.phonetic||'';
+    if(!ph){for(var i=0;i<(e0.phonetics||[]).length;i++){if(e0.phonetics[i].text){ph=e0.phonetics[i].text;break;}}}
+    var m=e0.meanings&&e0.meanings[0];
+    return {word:e0.word,ph:ph.replace(/^\/|\/$/g,''),pos:m?(POS[m.partOfSpeech]||m.partOfSpeech):'',def:m&&m.definitions[0]?m.definitions[0].definition:''};
+  }catch(e){return null;}
+}
+async function toAr(text){
+  var j=await getJSON('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=en|ar',8000);
+  var main=j.responseData&&j.responseData.translatedText;
+  if(!main||/MYMEMORY WARNING|INVALID/i.test(main))throw new Error('translate');
+  var alts=[main];
+  (j.matches||[]).forEach(function(m){
+    var t=(m.translation||'').trim();
+    if(t&&alts.indexOf(t)<0&&alts.length<3&&t.length<40)alts.push(t);
+  });
+  return {main:main,alts:alts};
+}
 document.getElementById('f').addEventListener('submit',async function(e){
   e.preventDefault();
   var w=q.value.trim().toLowerCase();if(!w)return;
   q.blur();
-  out.innerHTML='<div class="msg">…</div>';
+  out.innerHTML='<div class="msg">Searching…</div>';
   try{
-    var res=await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(w));
-    if(!res.ok){out.innerHTML='<div class="msg">No entry found.</div>';return;}
-    var data=await res.json(),e0=data[0];
-    var ph=e0.phonetic||'';
-    if(!ph){for(var i=0;i<(e0.phonetics||[]).length;i++){if(e0.phonetics[i].text){ph=e0.phonetics[i].text;break;}}}
-    ph=ph.replace(/^\/|\/$/g,'');
-    var m=e0.meanings&&e0.meanings[0];
-    var pos=m?(POS[m.partOfSpeech]||m.partOfSpeech):'';
-    var defs=m?m.definitions.slice(0,2).map(function(d){return '<div class="def">'+esc(d.definition)+'</div>';}).join(''):'';
-    out.innerHTML='<h1>'+esc(cap(syl(e0.word)))+'</h1><div class="ph">'+(ph?'/'+esc(ph)+'/ ':'')+'<i>'+esc(pos)+'</i></div><hr>'+defs;
+    var res=await Promise.all([enEntry(w),toAr(w)]);
+    var en=res[0],ar=res[1];
+    var arDef='';
+    if(en&&en.def){try{arDef=(await toAr(en.def)).main;}catch(e){}}
+    var word=en?en.word:w;
+    out.innerHTML='<h1>'+esc(cap(syl(word)))+'</h1>'
+      +'<div class="ph">'+(en&&en.ph?'/'+esc(en.ph)+'/ ':'')+'<i>'+esc(en?en.pos:'')+'</i></div><hr>'
+      +'<div class="ar arw">'+esc(ar.alts.join(' · '))+'</div>'
+      +(arDef?'<div class="ar def">'+esc(arDef)+'</div>':'');
   }catch(err){
-    out.innerHTML='<div class="msg">Can\'t reach the dictionary. Check your internet.</div>';
+    out.innerHTML='<div class="msg">Could not load ('+esc(err.message)+'). Check internet or Shields.</div>';
   }
 });
 </script>
