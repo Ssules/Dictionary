@@ -22,11 +22,13 @@ hr{border:0;border-top:1px solid #777;margin:0 0 14px}
 .ar{direction:rtl;text-align:right;font-family:"Noto Naskh Arabic","Traditional Arabic",Tahoma,serif}
 .arw{font-size:clamp(32px,9vw,52px);line-height:1.4}
 .def{font-size:clamp(20px,5.5vw,30px);line-height:1.5;margin-top:10px;color:#ccc}
+.def.en{color:#fff;margin-top:14px}
+.def.ar{font-size:clamp(20px,5.5vw,28px)}
 .msg{color:#777;font-size:18px}
 </style>
 </head>
 <body>
-<form id="f"><input id="q" placeholder="Type an English word" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"><button type="submit">Go</button></form>
+<form id="f"><input id="q" placeholder="English or Arabic word" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"><button type="submit">Go</button></form>
 <main><div class="card" id="out"><div class="msg">Search a word.</div></div></main>
 <script>
 var out=document.getElementById('out'),q=document.getElementById('q');
@@ -80,6 +82,12 @@ document.getElementById('f').addEventListener('submit',async function(e){
   q.blur();
   out.innerHTML='<div class="msg">Searching…</div>';
   try{
+    if(/[\u0600-\u06FF]/.test(w)){
+      var j=await getJSON('https://api.mymemory.translated.net/get?q='+encodeURIComponent(w)+'&langpair=ar|en',8000);
+      var t=(j.responseData&&j.responseData.translatedText||'').trim().toLowerCase();
+      if(!t||/MYMEMORY WARNING|INVALID/i.test(t))throw new Error('translate');
+      w=t;
+    }
     var res=await Promise.all([enEntry(w),toAr(w)]);
     var en=res[0],ar=res[1];
     var arDef='';
@@ -88,6 +96,7 @@ document.getElementById('f').addEventListener('submit',async function(e){
     out.innerHTML='<h1>'+esc(cap(syl(word)))+'</h1>'
       +'<div class="ph">'+(en&&en.ph?'/'+esc(en.ph)+'/ ':'')+'<i>'+esc(en?en.pos:'')+'</i></div><hr>'
       +'<div class="ar arw">'+esc(ar.alts.join(' · '))+'</div>'
+      +(en&&en.def?'<div class="def en">'+esc(en.def)+'</div>':'')
       +(arDef?'<div class="ar def">'+esc(arDef)+'</div>':'');
   }catch(err){
     out.innerHTML='<div class="msg">Could not load ('+esc(err.message)+'). Check internet or Shields.</div>';
