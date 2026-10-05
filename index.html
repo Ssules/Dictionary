@@ -67,8 +67,14 @@ async function enEntry(w){
   }catch(e){}
   try{
     var j=await getJSON('https://en.wiktionary.org/api/rest_v1/page/definition/'+encodeURIComponent(w),9000);
-    var en=j.en&&j.en[0];
-    if(en){var k=en.partOfSpeech.toLowerCase();return {word:w,ph:'',pos:POS[k]||k,def:strip(en.definitions[0].definition)};}
+    var good=['noun','verb','adjective','adverb','pronoun','preposition','conjunction','interjection'];
+    var list=(j.en||[]).filter(function(x){return good.indexOf(x.partOfSpeech.toLowerCase())>=0;});
+    var en=list[0];
+    if(en){
+      var k=en.partOfSpeech.toLowerCase();
+      var ds=en.definitions.map(function(d){return strip(d.definition);}).filter(function(d){return d&&!/ISO 639|language code|alternative (form|spelling)|misspelling of/i.test(d);});
+      if(ds.length)return {word:w,ph:'',pos:POS[k]||k,def:ds[0]};
+    }
   }catch(e){}
   return null;
 }
@@ -77,11 +83,17 @@ async function toAr(text){
   var main=j.responseData&&j.responseData.translatedText;
   if(!main||/MYMEMORY WARNING|INVALID/i.test(main))throw new Error('translate');
   var isAr=function(t){return /[\u0600-\u06FF]/.test(t)&&!/[A-Za-z]/.test(t);};
-  var alts=isAr(main)?[main]:[];
-  (j.matches||[]).forEach(function(m){
-    var t=(m.translation||'').trim();
-    if(t&&isAr(t)&&alts.indexOf(t)<0&&alts.length<3&&t.length<40)alts.push(t);
-  });
+  var norm=function(t){return t.replace(/[\u064B-\u065F\u0670]/g,'').trim();};
+  if(text.split(' ').length>2)return {main:main,alts:[main]};
+  var seen={},alts=[];
+  var add=function(str){
+    String(str||'').split(/[;,\u060C\u061B\/]/).forEach(function(p){
+      p=p.trim();var n=norm(p);
+      if(p&&isAr(p)&&p.length<25&&!seen[n]&&alts.length<3){seen[n]=1;alts.push(p);}
+    });
+  };
+  add(main);
+  (j.matches||[]).forEach(function(m){add(m.translation);});
   if(!alts.length)alts=[main];
   return {main:alts[0],alts:alts};
 }
