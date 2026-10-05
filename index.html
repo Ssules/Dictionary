@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dictionary</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#000;color:#fff}
+body{font-family:Georgia,"Times New Roman",serif;display:flex;flex-direction:column;padding:16px 20px;padding-top:max(16px,env(safe-area-inset-top));padding-bottom:max(16px,env(safe-area-inset-bottom))}
+form{display:flex;gap:10px;border-bottom:1px solid #444;padding-bottom:10px}
+input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font:inherit;font-size:22px}
+input::placeholder{color:#666}
+button{background:none;border:0;color:#aaa;font:inherit;font-size:18px}
+main{flex:1;display:flex;align-items:flex-end;justify-content:flex-end;padding-bottom:12vh}
+.card{max-width:100%;text-align:right}
+h1{font-weight:400;font-size:clamp(40px,12vw,72px);margin:0;line-height:1.1;word-break:break-word}
+.ph{font-size:20px;margin:6px 0 14px}
+.ph i{font-style:italic}
+hr{border:0;border-top:1px solid #777;margin:0 0 14px}
+.def{font-size:clamp(20px,5.5vw,30px);line-height:1.35}
+.def+.def{margin-top:8px;color:#bbb;font-size:clamp(17px,4.5vw,24px)}
+.msg{color:#777;font-size:18px}
+</style>
+</head>
+<body>
+<form id="f"><input id="q" placeholder="Type a word" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"><button>Go</button></form>
+<main><div class="card" id="out"><div class="msg">Search a word.</div></div></main>
+<script>
+var out=document.getElementById('out'),q=document.getElementById('q');
+var POS={noun:'n.',verb:'v.',adjective:'adj.',adverb:'adv.',pronoun:'pron.',preposition:'prep.',conjunction:'conj.',interjection:'exclam.',article:'art.',determiner:'det.'};
+function esc(t){var d=document.createElement('div');d.textContent=t==null?'':t;return d.innerHTML;}
+function syl(w){
+  w=w.toLowerCase();
+  if(!/^[a-z]+$/.test(w))return w;
+  var tail='';
+  if(/[^aeiouy]e$/.test(w)&&!/[^aeiouy]le$/.test(w)){tail='e';w=w.slice(0,-1);}
+  var parts=w.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/g)||[w];
+  parts[parts.length-1]+=tail;
+  return parts.join('·');
+}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+document.getElementById('f').addEventListener('submit',async function(e){
+  e.preventDefault();
+  var w=q.value.trim().toLowerCase();if(!w)return;
+  q.blur();
+  out.innerHTML='<div class="msg">…</div>';
+  try{
+    var res=await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(w));
+    if(!res.ok){out.innerHTML='<div class="msg">No entry found.</div>';return;}
+    var data=await res.json(),e0=data[0];
+    var ph=e0.phonetic||'';
+    if(!ph){for(var i=0;i<(e0.phonetics||[]).length;i++){if(e0.phonetics[i].text){ph=e0.phonetics[i].text;break;}}}
+    ph=ph.replace(/^\/|\/$/g,'');
+    var m=e0.meanings&&e0.meanings[0];
+    var pos=m?(POS[m.partOfSpeech]||m.partOfSpeech):'';
+    var defs=m?m.definitions.slice(0,2).map(function(d){return '<div class="def">'+esc(d.definition)+'</div>';}).join(''):'';
+    out.innerHTML='<h1>'+esc(cap(syl(e0.word)))+'</h1><div class="ph">'+(ph?'/'+esc(ph)+'/ ':'')+'<i>'+esc(pos)+'</i></div><hr>'+defs;
+  }catch(err){
+    out.innerHTML='<div class="msg">Can\'t reach the dictionary. Check your internet.</div>';
+  }
+});
+</script>
+</body>
+</html>
